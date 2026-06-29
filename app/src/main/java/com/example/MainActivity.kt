@@ -152,9 +152,21 @@ fun MainScreen(viewModel: ChatViewModel) {
                fontWeight = FontWeight.Medium
              )
              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-               Box(modifier = Modifier.size(8.dp).background(com.example.ui.theme.ActiveGreen, RoundedCornerShape(50)))
+               val statusColor = when {
+                 uiState.isLoadingModel -> androidx.compose.ui.graphics.Color.Yellow
+                 uiState.modelLoadError != null -> MaterialTheme.colorScheme.error
+                 uiState.isModelLoaded -> com.example.ui.theme.ActiveGreen
+                 else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+               }
+               val statusText = when {
+                 uiState.isLoadingModel -> "Loading..."
+                 uiState.modelLoadError != null -> "Error"
+                 uiState.isModelLoaded -> if (uiState.activeProject != null) "PROJECT: ${uiState.currentModelName ?: "Ready"}" else (uiState.currentModelName ?: "Ready")
+                 else -> "No Model Loaded"
+               }
+               Box(modifier = Modifier.size(8.dp).background(statusColor, RoundedCornerShape(50)))
                Text(
-                 text = if (uiState.activeProject != null) "PROJECT MODE" else "MODEL LOADED",
+                 text = statusText,
                  style = MaterialTheme.typography.labelSmall,
                  color = MaterialTheme.colorScheme.onSurfaceVariant
                )
@@ -277,6 +289,16 @@ fun ModelSetupScreen(
   error: String?,
   onLoadModel: (String, Boolean, android.content.Context) -> Unit
 ) {
+  val context = LocalContext.current
+  var cpuModels by remember { mutableStateOf(emptyList<java.io.File>()) }
+  var gpuModels by remember { mutableStateOf(emptyList<java.io.File>()) }
+  
+  LaunchedEffect(Unit) {
+      AppConfig.ensureDirectoriesExist()
+      cpuModels = AppConfig.MODELS_CPU_DIR.listFiles()?.toList() ?: emptyList()
+      gpuModels = AppConfig.MODELS_GPU_DIR.listFiles()?.toList() ?: emptyList()
+  }
+
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -287,16 +309,72 @@ fun ModelSetupScreen(
     Icon(imageVector = Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
     Spacer(modifier = Modifier.size(16.dp))
     Text(
-      text = "No Model Loaded",
+      text = if (isLoading) "Loading Model..." else "No Model Loaded",
       style = MaterialTheme.typography.headlineMedium,
       fontWeight = FontWeight.Bold
     )
-    Spacer(modifier = Modifier.size(8.dp))
-    Text(
-      text = "Please go to the 'Models' tab to load an AI model.",
-      style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    if (isLoading) {
+      Spacer(modifier = Modifier.size(16.dp))
+      androidx.compose.material3.CircularProgressIndicator()
+    } else {
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+          text = "Select a model to load",
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Spacer(modifier = Modifier.size(24.dp))
+        
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (gpuModels.isNotEmpty()) {
+                item { Text("GPU Models", style = MaterialTheme.typography.labelMedium) }
+                items(gpuModels) { file ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { onLoadModel(file.absolutePath, true, context) },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(file.name, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+            if (cpuModels.isNotEmpty()) {
+                item { Spacer(modifier = Modifier.size(8.dp)) }
+                item { Text("CPU Models", style = MaterialTheme.typography.labelMedium) }
+                items(cpuModels) { file ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { onLoadModel(file.absolutePath, false, context) },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(file.name, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+            if (gpuModels.isEmpty() && cpuModels.isEmpty()) {
+                item {
+                    Text(
+                      text = "No models found. Please go to the 'Models' tab to import an AI model.",
+                      style = MaterialTheme.typography.bodyMedium,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                      modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+    
     if (error != null) {
       Spacer(modifier = Modifier.size(16.dp))
       Text(

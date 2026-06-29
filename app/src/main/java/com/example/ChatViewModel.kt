@@ -27,6 +27,7 @@ data class ChatUiState(
     val isModelLoaded: Boolean = false,
     val isLoadingModel: Boolean = false,
     val modelLoadError: String? = null,
+    val currentModelName: String? = null,
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
     val errorEvent: String? = null,
@@ -57,7 +58,51 @@ class ChatViewModel : ViewModel() {
                 val greeting = ChatMessage(text = "Chat Mode activated. Standard instructions.", isUser = false)
                 _uiState.update { it.copy(messages = listOf(greeting)) }
             }
+            loadConversation()
         }
+    }
+
+    private fun loadConversation() {
+        val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
+        val targetFile = java.io.File(targetDir, "chat_history.json")
+        if (targetFile.exists()) {
+            try {
+                val content = targetFile.readText()
+                val parsed = parseJsonMessages(content)
+                if (parsed.isNotEmpty()) {
+                    _uiState.update { it.copy(messages = parsed) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun saveConversation() {
+        val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
+        val targetFile = java.io.File(targetDir, "chat_history.json")
+        try {
+            val jsonArray = _uiState.value.messages.joinToString(
+                prefix = "[\n", separator = ",\n", postfix = "\n]"
+            ) { msg ->
+                val escapedText = msg.text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
+                "  {\"text\":\"${escapedText}\",\"isUser\":${msg.isUser}}"
+            }
+            targetFile.writeText(jsonArray)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun parseJsonMessages(json: String): List<ChatMessage> {
+        val messages = mutableListOf<ChatMessage>()
+        val regex = Regex("\\{\"text\":\"(.*?)\",\"isUser\":(true|false)\\}")
+        regex.findAll(json).forEach { match ->
+            val text = match.groupValues[1].replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
+            val isUser = match.groupValues[2].toBoolean()
+            messages.add(ChatMessage(text = text, isUser = isUser))
+        }
+        return messages
     }
 
     fun loadModel(context: Context, rawModelPath: String, useGpu: Boolean = true) {
@@ -103,6 +148,7 @@ class ChatViewModel : ViewModel() {
                     it.copy(
                         isModelLoaded = true, 
                         isLoadingModel = false,
+                        currentModelName = file.name,
                         messages = listOf(ChatMessage(text = "Model loaded successfully! You can start chatting.", isUser = false))
                     ) 
                 }
@@ -145,6 +191,7 @@ class ChatViewModel : ViewModel() {
                 isGenerating = true
             ) 
         }
+        saveConversation()
         
         val currentConversation = conversation ?: return
         
@@ -166,6 +213,7 @@ class ChatViewModel : ViewModel() {
                              errorEvent = "Model generation failed: ${e.localizedMessage}"
                          )
                      }
+                     saveConversation()
                 }.collect { messageUpdate ->
                     fullResponse += messageUpdate.toString()
                     _uiState.update { state ->
@@ -179,6 +227,7 @@ class ChatViewModel : ViewModel() {
                 }
                 
                 _uiState.update { it.copy(isGenerating = false) }
+                saveConversation()
                 
                 // Process tool calls if in project mode
                 val currentProject = _uiState.value.activeProject
@@ -199,6 +248,7 @@ class ChatViewModel : ViewModel() {
                          errorEvent = "An unexpected error occurred: ${e.localizedMessage}"
                      )
                  }
+                 saveConversation()
             }
         }
     }
