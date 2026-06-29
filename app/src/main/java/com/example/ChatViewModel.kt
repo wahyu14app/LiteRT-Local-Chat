@@ -29,7 +29,8 @@ data class ChatUiState(
     val modelLoadError: String? = null,
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
-    val errorEvent: String? = null
+    val errorEvent: String? = null,
+    val activeProject: java.io.File? = null
 )
 
 class ChatViewModel : ViewModel() {
@@ -41,6 +42,22 @@ class ChatViewModel : ViewModel() {
 
     fun clearErrorEvent() {
         _uiState.update { it.copy(errorEvent = null) }
+    }
+
+    fun setActiveProject(project: java.io.File?) {
+        _uiState.update { it.copy(activeProject = project, messages = emptyList()) }
+        if (engine != null) {
+            conversation?.close()
+            conversation = engine?.createConversation()
+            if (project != null) {
+                val instructions = java.io.File(project, "instructions.txt").readText()
+                val greeting = ChatMessage(text = "Project Mode activated. Instructions:\n$instructions", isUser = false)
+                _uiState.update { it.copy(messages = listOf(greeting)) }
+            } else {
+                val greeting = ChatMessage(text = "Chat Mode activated. Standard instructions.", isUser = false)
+                _uiState.update { it.copy(messages = listOf(greeting)) }
+            }
+        }
     }
 
     fun loadModel(context: Context, rawModelPath: String, useGpu: Boolean = true) {
@@ -163,6 +180,12 @@ class ChatViewModel : ViewModel() {
                 
                 _uiState.update { it.copy(isGenerating = false) }
                 
+                // Process tool calls if in project mode
+                val currentProject = _uiState.value.activeProject
+                if (currentProject != null) {
+                    processToolCalls(fullResponse, currentProject)
+                }
+                
             } catch (e: Exception) {
                 _uiState.update { state ->
                      val msgs = state.messages.toMutableList()
@@ -177,6 +200,67 @@ class ChatViewModel : ViewModel() {
                      )
                  }
             }
+        }
+    }
+
+    private suspend fun processToolCalls(response: String, projectDir: java.io.File) {
+        val toolRegex = Regex("<tool\\s+action=\"([^\"]+)\"\\s+(?:path|query)=\"([^\"]+)\"\\s*>(.*?)</tool>|<tool\\s+action=\"([^\"]+)\"\\s+(?:path|query)=\"([^\"]+)\"\\s*/>", RegexOption.DOT_MATCHES_ALL)
+        val match = toolRegex.find(response)
+        
+        if (match != null) {
+            val action = match.groups[1]?.value ?: match.groups[4]?.value ?: ""
+            val arg = match.groups[2]?.value ?: match.groups[5]?.value ?: ""
+            val content = match.groups[3]?.value ?: ""
+            
+            val dataDir = java.io.File(projectDir, "data")
+            val targetFile = java.io.File(dataDir, arg)
+            
+            var toolResult = ""
+            try {
+                when (action) {
+                    "write_file" -> {
+                        targetFile.parentFile?.mkdirs()
+                        targetFile.writeText(content)
+                        toolResult = "File $arg written successfully."
+                    }
+                    "read_file" -> {
+                        if (targetFile.exists()) {
+                            toolResult = "Content of $arg:\n" + targetFile.readText()
+                        } else {
+                            toolResult = "Error: File $arg not found."
+                        }
+                    }
+                    "web_search" -> {
+                        val result = withContext(Dispatchers.IO) {
+                            try {
+                                val url = java.net.URL("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${java.net.URLEncoder.encode(arg, "UTF-8")}&utf8=&format=json")
+                                val connection = url.openConnection() as java.net.HttpURLConnection
+                                connection.requestMethod = "GET"
+                                val inputStream = connection.inputStream
+                                val responseText = inputStream.bufferedReader().use { it.readText() }
+                                
+                                // Very basic JSON extraction to avoid importing extra libraries just for this
+                                val snippetRegex = Regex("\"snippet\":\"(.*?)\"")
+                                val snippets = snippetRegex.findAll(responseText).map { it.groupValues[1] }.take(3).toList()
+                                
+                                if (snippets.isEmpty()) "No results found for $arg"
+                                else "Web search results for '$arg':\n- " + snippets.joinToString("\n- ") { it.replace(Regex("<[^>]*>"), "") }
+                            } catch (e: Exception) {
+                                "Failed to search the web: ${e.message}"
+                            }
+                        }
+                        toolResult = result
+                    }
+                    else -> {
+                        toolResult = "Error: Unknown action $action."
+                    }
+                }
+            } catch (e: Exception) {
+                toolResult = "Error executing $action: ${e.message}"
+            }
+            
+            // Auto-reply with tool result
+            sendMessage("[System: Tool Execution Result]\n$toolResult")
         }
     }
 

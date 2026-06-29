@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
@@ -76,7 +78,7 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
-        ChatScreen(viewModel = viewModel)
+        MainScreen(viewModel = viewModel)
       }
     }
   }
@@ -84,10 +86,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun MainScreen(viewModel: ChatViewModel) {
   val uiState by viewModel.uiState.collectAsState()
   val snackbarHostState = remember { SnackbarHostState() }
   val context = LocalContext.current
+  
+  var currentScreen by remember { mutableStateOf("CHAT") }
   
   LaunchedEffect(Unit) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -102,7 +106,11 @@ fun ChatScreen(viewModel: ChatViewModel) {
                   intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
                   context.startActivity(intent)
               }
+          } else {
+              AppConfig.ensureDirectoriesExist()
           }
+      } else {
+          AppConfig.ensureDirectoriesExist()
       }
   }
   
@@ -139,14 +147,14 @@ fun ChatScreen(viewModel: ChatViewModel) {
           }
           Column {
              Text(
-               text = "LiteRT Local",
+               text = uiState.activeProject?.let { java.io.File(it, "name.txt").takeIf { it.exists() }?.readText() ?: it.name } ?: "LiteRT Local",
                style = MaterialTheme.typography.titleMedium,
                fontWeight = FontWeight.Medium
              )
              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                Box(modifier = Modifier.size(8.dp).background(com.example.ui.theme.ActiveGreen, RoundedCornerShape(50)))
                Text(
-                 text = "MODEL LOADED",
+                 text = if (uiState.activeProject != null) "PROJECT MODE" else "MODEL LOADED",
                  style = MaterialTheme.typography.labelSmall,
                  color = MaterialTheme.colorScheme.onSurfaceVariant
                )
@@ -154,6 +162,11 @@ fun ChatScreen(viewModel: ChatViewModel) {
           }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+          if (uiState.activeProject != null) {
+              IconButton(onClick = { viewModel.setActiveProject(null) }) {
+                  Icon(imageVector = Icons.Default.Close, contentDescription = "Exit Project Mode", tint = MaterialTheme.colorScheme.error)
+              }
+          }
           IconButton(onClick = {}) {
             Icon(imageVector = Icons.Default.Analytics, contentDescription = "Analytics", tint = MaterialTheme.colorScheme.onSurfaceVariant)
           }
@@ -173,36 +186,47 @@ fun ChatScreen(viewModel: ChatViewModel) {
              .padding(horizontal = 8.dp, vertical = 8.dp),
            horizontalArrangement = Arrangement.SpaceAround
          ) {
-           Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+           Column(
+             modifier = Modifier.clickable { currentScreen = "CHAT" },
+             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+           ) {
               Box(
                 modifier = Modifier
-                  .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(50))
+                  .background(if(currentScreen == "CHAT") MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
                   .padding(horizontal = 20.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
               ) {
-                 Icon(imageVector = Icons.Default.Chat, contentDescription = "Chat", tint = MaterialTheme.colorScheme.primary)
+                 Icon(imageVector = Icons.Default.Chat, contentDescription = "Chat", tint = if(currentScreen == "CHAT") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
               }
-              Text("Chat", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground)
+              Text("Chat", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "CHAT") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
            }
-           Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+           Column(
+             modifier = Modifier.clickable { currentScreen = "MODELS" },
+             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+           ) {
               Box(
                 modifier = Modifier
+                  .background(if(currentScreen == "MODELS") MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
                   .padding(horizontal = 20.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
               ) {
-                 Icon(imageVector = Icons.Default.Extension, contentDescription = "Models", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                 Icon(imageVector = Icons.Default.Extension, contentDescription = "Models", tint = if(currentScreen == "MODELS") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
               }
-              Text("Models", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+              Text("Models", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "MODELS") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
            }
-           Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+           Column(
+             modifier = Modifier.clickable { currentScreen = "PROJECTS" },
+             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+           ) {
               Box(
                 modifier = Modifier
+                  .background(if(currentScreen == "PROJECTS") MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
                   .padding(horizontal = 20.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
               ) {
-                 Icon(imageVector = Icons.Default.History, contentDescription = "History", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                 Icon(imageVector = Icons.Default.History, contentDescription = "Projects", tint = if(currentScreen == "PROJECTS") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
               }
-              Text("History", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+              Text("Projects", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "PROJECTS") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
            }
          }
        }
@@ -214,18 +238,31 @@ fun ChatScreen(viewModel: ChatViewModel) {
         .padding(innerPadding),
       color = MaterialTheme.colorScheme.background
     ) {
-      if (!uiState.isModelLoaded) {
-        ModelSetupScreen(
-          isLoading = uiState.isLoadingModel,
-          error = uiState.modelLoadError,
-          onLoadModel = { path, useGpu, ctx -> viewModel.loadModel(context = ctx, rawModelPath = path, useGpu = useGpu) }
-        )
-      } else {
-        ChatInterface(
-          messages = uiState.messages,
-          isGenerating = uiState.isGenerating,
-          onSendMessage = viewModel::sendMessage
-        )
+      when (currentScreen) {
+          "CHAT" -> {
+              if (!uiState.isModelLoaded) {
+                ModelSetupScreen(
+                  isLoading = uiState.isLoadingModel,
+                  error = uiState.modelLoadError,
+                  onLoadModel = { path, useGpu, ctx -> viewModel.loadModel(context = ctx, rawModelPath = path, useGpu = useGpu) }
+                )
+              } else {
+                ChatInterface(
+                  messages = uiState.messages,
+                  isGenerating = uiState.isGenerating,
+                  onSendMessage = viewModel::sendMessage
+                )
+              }
+          }
+          "MODELS" -> {
+              ModelManagementScreen(viewModel = viewModel)
+          }
+          "PROJECTS" -> {
+              ProjectsScreen(
+                  viewModel = viewModel,
+                  onProjectSelected = { currentScreen = "CHAT" }
+              )
+          }
       }
     }
   }
@@ -237,9 +274,6 @@ fun ModelSetupScreen(
   error: String?,
   onLoadModel: (String, Boolean, android.content.Context) -> Unit
 ) {
-  val context = LocalContext.current
-  var modelPath by remember { mutableStateOf("/data/local/tmp/model.litertlm") }
-  
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -247,87 +281,26 @@ fun ModelSetupScreen(
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center
   ) {
+    Icon(imageVector = Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+    Spacer(modifier = Modifier.size(16.dp))
     Text(
-      text = "Load Local Model",
+      text = "No Model Loaded",
       style = MaterialTheme.typography.headlineMedium,
       fontWeight = FontWeight.Bold
     )
-    
-    Spacer(modifier = Modifier.size(16.dp))
-    
+    Spacer(modifier = Modifier.size(8.dp))
     Text(
-      text = "Enter the absolute path to your .litertlm file on the device.",
+      text = "Please go to the 'Models' tab to load an AI model.",
       style = MaterialTheme.typography.bodyMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    
-    Spacer(modifier = Modifier.size(24.dp))
-    
-    OutlinedTextField(
-      value = modelPath,
-      onValueChange = { modelPath = it },
-      label = { Text("Model Path") },
-      modifier = Modifier.fillMaxWidth(),
-      enabled = !isLoading
-    )
-    
     if (error != null) {
-      Spacer(modifier = Modifier.size(8.dp))
+      Spacer(modifier = Modifier.size(16.dp))
       Text(
         text = error,
         color = MaterialTheme.colorScheme.error,
         style = MaterialTheme.typography.bodySmall
       )
-    }
-    
-    Spacer(modifier = Modifier.size(24.dp))
-    
-    Button(
-      onClick = { onLoadModel(modelPath, true, context) },
-      enabled = !isLoading,
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      if (isLoading) {
-        CircularProgressIndicator(
-          modifier = Modifier.size(24.dp),
-          color = MaterialTheme.colorScheme.onPrimary,
-          strokeWidth = 2.dp
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Loading...")
-      } else {
-        Text("Load Model (GPU)")
-      }
-    }
-    
-    Spacer(modifier = Modifier.size(8.dp))
-    
-    Button(
-      onClick = { onLoadModel(modelPath, false, context) },
-      enabled = !isLoading,
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      Text("Load Model (CPU)")
-    }
-    
-    Spacer(modifier = Modifier.size(16.dp))
-    
-    androidx.compose.material3.TextButton(
-        onClick = {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                try {
-                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    intent.addCategory("android.intent.category.DEFAULT")
-                    intent.data = android.net.Uri.parse(String.format("package:%s", context.packageName))
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    context.startActivity(intent)
-                }
-            }
-        }
-    ) {
-        Text("Grant Storage Permission")
     }
   }
 }
