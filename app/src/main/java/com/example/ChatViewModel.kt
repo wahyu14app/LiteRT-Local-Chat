@@ -142,6 +142,7 @@ class ChatViewModel : ViewModel() {
                     engine?.close()
                     engine = newEngine
                     conversation = newEngine.createConversation()
+                    AiEngineManager.engine = newEngine
                 }
                 
                 _uiState.update { 
