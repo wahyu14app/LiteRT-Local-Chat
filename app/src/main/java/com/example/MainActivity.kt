@@ -67,6 +67,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontFamily
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
 
@@ -568,11 +573,76 @@ fun MessageBubble(message: ChatMessage) {
         .padding(12.dp)
     ) {
       Text(
-        text = message.text,
+        text = parseMarkdownToAnnotatedString(message.text),
         color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onBackground,
         style = MaterialTheme.typography.bodyMedium,
         lineHeight = androidx.compose.ui.unit.TextUnit(20f, androidx.compose.ui.unit.TextUnitType.Sp)
       )
     }
   }
+}
+
+@Composable
+fun parseMarkdownToAnnotatedString(text: String): androidx.compose.ui.text.AnnotatedString {
+    return androidx.compose.ui.text.buildAnnotatedString {
+        var currentIndex = 0
+        // Simple regex to match **bold**, *italic*, `code`, and ```code block```
+        // Note: this is a basic implementation that captures main formatting patterns
+        val pattern = Regex("```(.*?)```|\\*\\*(.*?)\\*\\*|\\*(.*?)\\*|`(.*?)`", RegexOption.DOT_MATCHES_ALL)
+        
+        val matches = pattern.findAll(text)
+        
+        for (match in matches) {
+            // Append the text before the match
+            if (match.range.first > currentIndex) {
+                append(text.substring(currentIndex, match.range.first))
+            }
+            
+            // Apply styles based on the captured group
+            when {
+                match.groups[1] != null -> {
+                    // Code block
+                    withStyle(androidx.compose.ui.text.SpanStyle(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        background = MaterialTheme.colorScheme.surfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )) {
+                        append(match.groups[1]?.value ?: "")
+                    }
+                }
+                match.groups[2] != null -> {
+                    // Bold
+                    withStyle(androidx.compose.ui.text.SpanStyle(
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )) {
+                        append(match.groups[2]?.value ?: "")
+                    }
+                }
+                match.groups[3] != null -> {
+                    // Italic
+                    withStyle(androidx.compose.ui.text.SpanStyle(
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )) {
+                        append(match.groups[3]?.value ?: "")
+                    }
+                }
+                match.groups[4] != null -> {
+                    // Inline code
+                    withStyle(androidx.compose.ui.text.SpanStyle(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        background = MaterialTheme.colorScheme.surfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )) {
+                        append(match.groups[4]?.value ?: "")
+                    }
+                }
+            }
+            currentIndex = match.range.last + 1
+        }
+        
+        // Append any remaining text
+        if (currentIndex < text.length) {
+            append(text.substring(currentIndex))
+        }
+    }
 }
