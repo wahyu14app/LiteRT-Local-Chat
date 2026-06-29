@@ -43,7 +43,8 @@ class ChatViewModel : ViewModel() {
         _uiState.update { it.copy(errorEvent = null) }
     }
 
-    fun loadModel(context: Context, modelPath: String, useGpu: Boolean = true) {
+    fun loadModel(context: Context, rawModelPath: String, useGpu: Boolean = true) {
+        val modelPath = rawModelPath.trim()
         if (_uiState.value.isLoadingModel) return
         
         if (modelPath.isBlank()) {
@@ -51,8 +52,13 @@ class ChatViewModel : ViewModel() {
             return
         }
         
-        if (!java.io.File(modelPath).exists()) {
-            _uiState.update { it.copy(modelLoadError = "File not found: $modelPath. Ensure the model is pushed to the device.") }
+        val file = java.io.File(modelPath)
+        if (!file.exists()) {
+            _uiState.update { it.copy(modelLoadError = "File not found: $modelPath. Ensure the model is pushed to the device and permissions are granted.") }
+            return
+        }
+        if (!file.canRead()) {
+            _uiState.update { it.copy(modelLoadError = "Permission denied to read: $modelPath. Please grant All Files Access in Settings.") }
             return
         }
         
@@ -84,10 +90,15 @@ class ChatViewModel : ViewModel() {
                     ) 
                 }
             } catch (e: Exception) {
+                val errorMsg = e.localizedMessage ?: e.message ?: "Unknown error occurred"
+                val hint = if (errorMsg.contains("PERMISSION_DENIED", ignoreCase = true) || errorMsg.contains("Permission denied", ignoreCase = true)) {
+                    "\nHint: Ensure 'All files access' permission is granted to this app in Android Settings."
+                } else ""
+                
                 _uiState.update { 
                     it.copy(
                         isLoadingModel = false, 
-                        modelLoadError = e.message ?: "Unknown error occurred"
+                        modelLoadError = "Error: $errorMsg$hint"
                     ) 
                 }
             }

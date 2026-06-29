@@ -1,6 +1,11 @@
 package com.example
 
 import android.os.Bundle
+import android.os.Build
+import android.os.Environment
+import android.content.Intent
+import android.provider.Settings
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -82,6 +87,24 @@ class MainActivity : ComponentActivity() {
 fun ChatScreen(viewModel: ChatViewModel) {
   val uiState by viewModel.uiState.collectAsState()
   val snackbarHostState = remember { SnackbarHostState() }
+  val context = LocalContext.current
+  
+  LaunchedEffect(Unit) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          if (!Environment.isExternalStorageManager()) {
+              try {
+                  val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                  intent.addCategory("android.intent.category.DEFAULT")
+                  intent.data = Uri.parse(String.format("package:%s", context.packageName))
+                  context.startActivity(intent)
+              } catch (e: Exception) {
+                  val intent = Intent()
+                  intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                  context.startActivity(intent)
+              }
+          }
+      }
+  }
   
   LaunchedEffect(uiState.errorEvent) {
       uiState.errorEvent?.let { errorMsg ->
@@ -195,7 +218,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
         ModelSetupScreen(
           isLoading = uiState.isLoadingModel,
           error = uiState.modelLoadError,
-          onLoadModel = { path, useGpu, ctx -> viewModel.loadModel(context = ctx, modelPath = path, useGpu = useGpu) }
+          onLoadModel = { path, useGpu, ctx -> viewModel.loadModel(context = ctx, rawModelPath = path, useGpu = useGpu) }
         )
       } else {
         ChatInterface(
@@ -285,6 +308,26 @@ fun ModelSetupScreen(
       modifier = Modifier.fillMaxWidth()
     ) {
       Text("Load Model (CPU)")
+    }
+    
+    Spacer(modifier = Modifier.size(16.dp))
+    
+    androidx.compose.material3.TextButton(
+        onClick = {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                try {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    intent.addCategory("android.intent.category.DEFAULT")
+                    intent.data = android.net.Uri.parse(String.format("package:%s", context.packageName))
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    context.startActivity(intent)
+                }
+            }
+        }
+    ) {
+        Text("Grant Storage Permission")
     }
   }
 }
