@@ -103,7 +103,7 @@ fun MainScreen(viewModel: ChatViewModel) {
   val snackbarHostState = remember { SnackbarHostState() }
   val context = LocalContext.current
   
-  var currentScreen by remember { mutableStateOf("CHAT") }
+  var currentScreen by remember { mutableStateOf("HOME") }
   
   LaunchedEffect(Unit) {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -211,6 +211,20 @@ fun MainScreen(viewModel: ChatViewModel) {
            horizontalArrangement = Arrangement.SpaceAround
          ) {
            Column(
+             modifier = Modifier.clickable { currentScreen = "HOME" },
+             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+           ) {
+              Box(
+                modifier = Modifier
+                  .background(if(currentScreen == "HOME") MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
+                  .padding(horizontal = 20.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+              ) {
+                 Icon(imageVector = Icons.Default.Analytics, contentDescription = "Home", tint = if(currentScreen == "HOME") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+              }
+              Text("Home", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "HOME") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
+           }
+           Column(
              modifier = Modifier.clickable { currentScreen = "CHAT" },
              horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
            ) {
@@ -238,20 +252,6 @@ fun MainScreen(viewModel: ChatViewModel) {
               }
               Text("Models", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "MODELS") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
            }
-           Column(
-             modifier = Modifier.clickable { currentScreen = "PROJECTS" },
-             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
-           ) {
-              Box(
-                modifier = Modifier
-                  .background(if(currentScreen == "PROJECTS") MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
-                  .padding(horizontal = 20.dp, vertical = 4.dp),
-                contentAlignment = Alignment.Center
-              ) {
-                 Icon(imageVector = Icons.Default.History, contentDescription = "Projects", tint = if(currentScreen == "PROJECTS") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-              }
-              Text("Projects", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "PROJECTS") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
-           }
          }
        }
     }
@@ -263,6 +263,14 @@ fun MainScreen(viewModel: ChatViewModel) {
       color = MaterialTheme.colorScheme.background
     ) {
       when (currentScreen) {
+          "HOME" -> {
+              HomeScreen(
+                  onNavigateToChat = { currentScreen = "CHAT" },
+                  onNavigateToModels = { currentScreen = "MODELS" },
+                  onNavigateToSettings = { currentScreen = "SETTINGS" },
+                  onNavigateToDocs = { currentScreen = "DOCS" }
+              )
+          }
           "CHAT" -> {
               if (!uiState.isModelLoaded) {
                 ModelSetupScreen(
@@ -290,9 +298,221 @@ fun MainScreen(viewModel: ChatViewModel) {
                   onProjectSelected = { currentScreen = "CHAT" }
               )
           }
+          "SETTINGS" -> {
+              SettingsScreen()
+          }
+          "DOCS" -> {
+              DocsScreen()
+          }
       }
     }
   }
+}
+
+@Composable
+fun HomeScreen(
+    onNavigateToChat: () -> Unit,
+    onNavigateToModels: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToDocs: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Welcome to Local AI Engine",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = "Manage your local AI models and integrations",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.size(32.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            MenuCard(
+                modifier = Modifier.weight(1f),
+                title = "Chat",
+                description = "Talk to AI",
+                icon = Icons.Default.Chat,
+                onClick = onNavigateToChat
+            )
+            MenuCard(
+                modifier = Modifier.weight(1f),
+                title = "Models",
+                description = "Import & Manage",
+                icon = Icons.Default.Extension,
+                onClick = onNavigateToModels
+            )
+        }
+        Spacer(modifier = Modifier.size(16.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            MenuCard(
+                modifier = Modifier.weight(1f),
+                title = "Settings",
+                description = "AI Parameters",
+                icon = Icons.Default.Settings,
+                onClick = onNavigateToSettings
+            )
+            MenuCard(
+                modifier = Modifier.weight(1f),
+                title = "Docs",
+                description = "Developer IPC",
+                icon = Icons.Default.AttachFile,
+                onClick = onNavigateToDocs
+            )
+        }
+    }
+}
+
+@Composable
+fun MenuCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier.clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(modifier = Modifier.size(12.dp))
+            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.size(4.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("AI Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.size(16.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Temperature (Coming soon)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Control the randomness of the model's output.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(modifier = Modifier.size(12.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Max Tokens (Coming soon)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Limit the maximum length of generated responses.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+fun DocsScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("Developer Documentation", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.size(8.dp))
+        Text("How to interact with this AI engine from other apps using Android Intents.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        
+        Spacer(modifier = Modifier.size(16.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Sending a Prompt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.size(8.dp))
+                val code = """
+val intent = Intent("com.example.litert.ACTION_PROMPT")
+intent.putExtra("prompt", "Hello AI!")
+intent.putExtra("session_id", "my_app_session")
+intent.putExtra("reply_action", "com.myapp.ACTION_REPLY")
+sendBroadcast(intent)
+                """.trimIndent()
+                Box(modifier = Modifier
+                    .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
+                    .padding(8.dp)
+                    .fillMaxWidth()) {
+                    Text(text = code, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.size(12.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Receiving a Response", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Register a BroadcastReceiver in your app for the 'reply_action' you provided.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.size(8.dp))
+                val code = """
+val receiver = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val response = intent.getStringExtra("response")
+        val sessionId = intent.getStringExtra("session_id")
+        // Handle AI response
+    }
+}
+registerReceiver(receiver, IntentFilter("com.myapp.ACTION_REPLY"))
+                """.trimIndent()
+                Box(modifier = Modifier
+                    .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
+                    .padding(8.dp)
+                    .fillMaxWidth()) {
+                    Text(text = code, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+    }
 }
 
 @Composable
