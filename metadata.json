@@ -1,0 +1,6 @@
+{
+  "name": "LiteRT Local Chat",
+  "description": "An Android application to run and chat with local on-device AI models using the LiteRT-LM Kotlin API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
