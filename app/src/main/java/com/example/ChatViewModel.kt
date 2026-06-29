@@ -168,13 +168,19 @@ class ChatViewModel : ViewModel() {
         }
     }
 
+    private val messageQueue = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
+    init {
+        viewModelScope.launch {
+            for (text in messageQueue) {
+                processMessage(text)
+            }
+        }
+    }
+
     fun sendMessage(text: String) {
         if (text.isBlank()) {
             _uiState.update { it.copy(errorEvent = "Message cannot be empty.") }
-            return
-        }
-        if (_uiState.value.isGenerating) {
-            _uiState.update { it.copy(errorEvent = "Please wait for the model to finish generating.") }
             return
         }
         if (conversation == null) {
@@ -183,85 +189,114 @@ class ChatViewModel : ViewModel() {
         }
         
         val userMsg = ChatMessage(text = text, isUser = true)
-        val initialModelMsg = ChatMessage(text = "", isUser = false)
-        
         _uiState.update { state -> 
-            state.copy(
-                messages = state.messages + userMsg + initialModelMsg,
-                isGenerating = true
-            ) 
+            state.copy(messages = state.messages + userMsg)
         }
         saveConversation()
         
+        messageQueue.trySend(text)
+    }
+
+    private suspend fun processMessage(text: String) {
         val currentConversation = conversation ?: return
         
-        viewModelScope.launch {
-            try {
-                val flow = currentConversation.sendMessageAsync(text)
-                var fullResponse = ""
-                
-                flow.catch { e ->
-                     _uiState.update { state ->
-                         val msgs = state.messages.toMutableList()
-                         if (msgs.isNotEmpty()) {
-                             val last = msgs.removeLast()
-                             msgs.add(last.copy(text = last.text + "\n\n⚠️ Error during generation: ${e.localizedMessage ?: "Unknown error"}"))
-                         }
-                         state.copy(
-                             messages = msgs, 
-                             isGenerating = false,
-                             errorEvent = "Model generation failed: ${e.localizedMessage}"
-                         )
-                     }
-                     saveConversation()
-                }.collect { messageUpdate ->
-                    fullResponse += messageUpdate.toString()
-                    _uiState.update { state ->
-                        val msgs = state.messages.toMutableList()
-                        if (msgs.isNotEmpty()) {
-                            val last = msgs.removeLast()
-                            msgs.add(last.copy(text = fullResponse))
-                        }
-                        state.copy(messages = msgs)
-                    }
-                }
-                
-                _uiState.update { it.copy(isGenerating = false) }
-                saveConversation()
-                
-                // Process tool calls if in project mode
-                val currentProject = _uiState.value.activeProject
-                if (currentProject != null) {
-                    processToolCalls(fullResponse, currentProject)
-                }
-                
-            } catch (e: Exception) {
-                _uiState.update { state ->
+        val initialModelMsg = ChatMessage(text = "", isUser = false)
+        _uiState.update { state -> 
+            state.copy(
+                messages = state.messages + initialModelMsg,
+                isGenerating = true
+            ) 
+        }
+        
+        val currentProject = _uiState.value.activeProject
+        val promptText = if (currentProject != null) {
+            val instructions = java.io.File(currentProject, "instructions.txt").takeIf { it.exists() }?.readText() ?: ""
+            "System Instructions:\n$instructions\n\nUser Input:\n$text"
+        } else {
+            text
+        }
+        
+        try {
+            val flow = currentConversation.sendMessageAsync(promptText)
+            var fullResponse = ""
+            
+            flow.catch { e ->
+                 _uiState.update { state ->
                      val msgs = state.messages.toMutableList()
                      if (msgs.isNotEmpty()) {
                          val last = msgs.removeLast()
-                         msgs.add(last.copy(text = last.text + "\n\n⚠️ Execution error: ${e.localizedMessage ?: "Unknown error"}"))
+                         msgs.add(last.copy(text = last.text + "\n\n⚠️ Error during generation: ${e.localizedMessage ?: "Unknown error"}"))
                      }
                      state.copy(
                          messages = msgs, 
                          isGenerating = false,
-                         errorEvent = "An unexpected error occurred: ${e.localizedMessage}"
+                         errorEvent = "Model generation failed: ${e.localizedMessage}"
                      )
                  }
                  saveConversation()
+            }.collect { messageUpdate ->
+                fullResponse += messageUpdate.toString()
+                _uiState.update { state ->
+                    val msgs = state.messages.toMutableList()
+                    if (msgs.isNotEmpty()) {
+                        val last = msgs.removeLast()
+                        msgs.add(last.copy(text = fullResponse))
+                    }
+                    state.copy(messages = msgs)
+                }
             }
+            
+            _uiState.update { it.copy(isGenerating = false) }
+            saveConversation()
+            
+            // Process tool calls if in project mode
+            if (currentProject != null) {
+                processToolCalls(fullResponse, currentProject)
+            }
+            
+        } catch (e: Exception) {
+            _uiState.update { state ->
+                 val msgs = state.messages.toMutableList()
+                 if (msgs.isNotEmpty()) {
+                     val last = msgs.removeLast()
+                     msgs.add(last.copy(text = last.text + "\n\n⚠️ Execution error: ${e.localizedMessage ?: "Unknown error"}"))
+                 }
+                 state.copy(
+                     messages = msgs, 
+                     isGenerating = false,
+                     errorEvent = "An unexpected error occurred: ${e.localizedMessage}"
+                 )
+             }
+             saveConversation()
         }
     }
 
     private suspend fun processToolCalls(response: String, projectDir: java.io.File) {
-        val toolRegex = Regex("<tool\\s+action=\"([^\"]+)\"\\s+(?:path|query)=\"([^\"]+)\"\\s*>(.*?)</tool>|<tool\\s+action=\"([^\"]+)\"\\s+(?:path|query)=\"([^\"]+)\"\\s*/>", RegexOption.DOT_MATCHES_ALL)
-        val match = toolRegex.find(response)
+        var action = ""
+        var arg = ""
+        var content = ""
+        var foundTool = false
+
+        val xmlRegex = Regex("<tool\\s+action=\"([^\"]+)\"\\s+(?:path|query)=\"([^\"]+)\"\\s*>(.*?)</tool>|<tool\\s+action=\"([^\"]+)\"\\s+(?:path|query)=\"([^\"]+)\"\\s*/>", RegexOption.DOT_MATCHES_ALL)
+        val xmlMatch = xmlRegex.find(response)
         
-        if (match != null) {
-            val action = match.groups[1]?.value ?: match.groups[4]?.value ?: ""
-            val arg = match.groups[2]?.value ?: match.groups[5]?.value ?: ""
-            val content = match.groups[3]?.value ?: ""
-            
+        if (xmlMatch != null) {
+            action = xmlMatch.groups[1]?.value ?: xmlMatch.groups[4]?.value ?: ""
+            arg = xmlMatch.groups[2]?.value ?: xmlMatch.groups[5]?.value ?: ""
+            content = xmlMatch.groups[3]?.value ?: ""
+            foundTool = true
+        } else {
+            val jsonRegex = Regex("\\{\\s*\"action\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"(?:path|query)\"\\s*:\\s*\"([^\"]+)\"(?:\\s*,\\s*\"content\"\\s*:\\s*\"(.*?)\")?\\s*\\}", RegexOption.DOT_MATCHES_ALL)
+            val jsonMatch = jsonRegex.find(response)
+            if (jsonMatch != null) {
+                action = jsonMatch.groups[1]?.value ?: ""
+                arg = jsonMatch.groups[2]?.value ?: ""
+                content = jsonMatch.groups[3]?.value?.replace("\\n", "\n")?.replace("\\\"", "\"")?.replace("\\\\", "\\") ?: ""
+                foundTool = true
+            }
+        }
+        
+        if (foundTool) {
             val dataDir = java.io.File(projectDir, "data")
             val targetFile = java.io.File(dataDir, arg)
             

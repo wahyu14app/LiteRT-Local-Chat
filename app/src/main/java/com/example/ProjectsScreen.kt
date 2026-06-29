@@ -42,14 +42,26 @@ fun ProjectsScreen(viewModel: ChatViewModel, onProjectSelected: (File) -> Unit) 
                         File(projectDir, "name.txt").writeText(newProjectName)
                         File(projectDir, "data").mkdirs()
                         File(projectDir, "instructions.txt").writeText("""
-You are an AI assistant in Project Mode. You have access to tools.
-To use a tool, output a block exactly like this:
-<tool action="write_file" path="filename.txt">file content here</tool>
-<tool action="read_file" path="filename.txt" />
-<tool action="web_search" query="your search term here" />
-
+You are an AI assistant in Project Mode. You have access to tools to read/write files and search the web.
 All files are saved in the project data directory.
-Whenever you find new information, write it to a file.
+
+To use a tool, you can output an XML block:
+<tool action="write_file" path="config.json">
+{
+  "key": "value"
+}
+</tool>
+
+<tool action="read_file" path="config.json" />
+
+<tool action="web_search" query="android development" />
+
+Alternatively, you can use JSON format for tools:
+{"action": "write_file", "path": "test.txt", "content": "hello"}
+{"action": "read_file", "path": "test.txt"}
+{"action": "web_search", "query": "android development"}
+
+Whenever you find new information, write it to a file in a structured format like JSON.
                         """.trimIndent())
                         
                         projects = AppConfig.PROJECTS_DIR.listFiles()?.filter { it.isDirectory } ?: emptyList()
