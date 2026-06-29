@@ -255,7 +255,10 @@ fun MainScreen(viewModel: ChatViewModel) {
               }
           }
           "MODELS" -> {
-              ModelManagementScreen(viewModel = viewModel)
+              ModelManagementScreen(
+                  viewModel = viewModel,
+                  onNavigateToChat = { currentScreen = "CHAT" }
+              )
           }
           "PROJECTS" -> {
               ProjectsScreen(

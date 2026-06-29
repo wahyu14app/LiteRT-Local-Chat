@@ -26,7 +26,7 @@ import java.io.FileOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ModelManagementScreen(viewModel: ChatViewModel) {
+fun ModelManagementScreen(viewModel: ChatViewModel, onNavigateToChat: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
@@ -39,6 +39,7 @@ fun ModelManagementScreen(viewModel: ChatViewModel) {
     var selectedImportType by remember { mutableStateOf("GPU") }
 
     fun refreshModels() {
+        AppConfig.ensureDirectoriesExist()
         cpuModels = AppConfig.MODELS_CPU_DIR.listFiles()?.toList() ?: emptyList()
         gpuModels = AppConfig.MODELS_GPU_DIR.listFiles()?.toList() ?: emptyList()
     }
@@ -173,6 +174,7 @@ fun ModelManagementScreen(viewModel: ChatViewModel) {
                     },
                     onLoad = {
                         viewModel.loadModel(context, file.absolutePath, useGpu = true)
+                        onNavigateToChat()
                     }
                 )
             }
@@ -193,6 +195,7 @@ fun ModelManagementScreen(viewModel: ChatViewModel) {
                     },
                     onLoad = {
                         viewModel.loadModel(context, file.absolutePath, useGpu = false)
+                        onNavigateToChat()
                     }
                 )
             }
