@@ -27,6 +27,7 @@ class EngineService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        com.example.AiEngineManager.init(application as com.example.core.AiEngineApp)
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, "EngineChannel")
             .setContentTitle("LiteRT Engine")

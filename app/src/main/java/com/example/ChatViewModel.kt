@@ -1,13 +1,16 @@
 package com.example
 
+import android.app.Application
 import android.content.Context
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.AiEngineApp
+import com.example.database.entity.ChatMessageEntity
+import com.example.database.entity.ChatSessionEntity
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,78 +34,47 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isGenerating: Boolean = false,
     val errorEvent: String? = null,
-    val activeProject: java.io.File? = null
+    val activeProject: java.io.File? = null,
+    val currentSessionId: String = "default"
 )
 
-class ChatViewModel : ViewModel() {
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
+    private val app = application as AiEngineApp
+    private val chatDao = app.database.chatDao()
+
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var engine: Engine? = null
     private var conversation: Conversation? = null
 
+    init {
+        viewModelScope.launch {
+            chatDao.insertSession(ChatSessionEntity(sessionId = "default", title = "New Chat"))
+            
+            chatDao.getMessagesForSession("default").collect { entities ->
+                val messages = entities.map { ChatMessage(id = it.id.toString(), text = it.content, isUser = it.role == "user") }
+                _uiState.update { it.copy(messages = messages) }
+            }
+        }
+        
+        viewModelScope.launch {
+            for (text in messageQueue) {
+                processMessage(text)
+            }
+        }
+    }
+
     fun clearErrorEvent() {
         _uiState.update { it.copy(errorEvent = null) }
     }
 
     fun setActiveProject(project: java.io.File?) {
-        _uiState.update { it.copy(activeProject = project, messages = emptyList()) }
+        _uiState.update { it.copy(activeProject = project) }
         if (engine != null) {
             conversation?.close()
             conversation = engine?.createConversation()
-            if (project != null) {
-                val instructions = java.io.File(project, "instructions.txt").readText()
-                val greeting = ChatMessage(text = "Project Mode activated. Instructions:\n$instructions", isUser = false)
-                _uiState.update { it.copy(messages = listOf(greeting)) }
-            } else {
-                val greeting = ChatMessage(text = "Chat Mode activated. Standard instructions.", isUser = false)
-                _uiState.update { it.copy(messages = listOf(greeting)) }
-            }
-            loadConversation()
         }
-    }
-
-    private fun loadConversation() {
-        val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
-        val targetFile = java.io.File(targetDir, "chat_history.json")
-        if (targetFile.exists()) {
-            try {
-                val content = targetFile.readText()
-                val parsed = parseJsonMessages(content)
-                if (parsed.isNotEmpty()) {
-                    _uiState.update { it.copy(messages = parsed) }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun saveConversation() {
-        val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
-        val targetFile = java.io.File(targetDir, "chat_history.json")
-        try {
-            val jsonArray = _uiState.value.messages.joinToString(
-                prefix = "[\n", separator = ",\n", postfix = "\n]"
-            ) { msg ->
-                val escapedText = msg.text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
-                "  {\"text\":\"${escapedText}\",\"isUser\":${msg.isUser}}"
-            }
-            targetFile.writeText(jsonArray)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun parseJsonMessages(json: String): List<ChatMessage> {
-        val messages = mutableListOf<ChatMessage>()
-        val regex = Regex("\\{\"text\":\"(.*?)\",\"isUser\":(true|false)\\}")
-        regex.findAll(json).forEach { match ->
-            val text = match.groupValues[1].replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
-            val isUser = match.groupValues[2].toBoolean()
-            messages.add(ChatMessage(text = text, isUser = isUser))
-        }
-        return messages
     }
 
     fun loadModel(context: Context, rawModelPath: String, useGpu: Boolean = true) {
@@ -149,8 +121,7 @@ class ChatViewModel : ViewModel() {
                     it.copy(
                         isModelLoaded = true, 
                         isLoadingModel = false,
-                        currentModelName = file.name,
-                        messages = listOf(ChatMessage(text = "Model loaded successfully! You can start chatting.", isUser = false))
+                        currentModelName = file.name
                     ) 
                 }
             } catch (e: Exception) {
@@ -169,15 +140,16 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    private val messageQueue = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
-
-    init {
+    fun clearConversation() {
+        val sessionId = _uiState.value.currentSessionId
         viewModelScope.launch {
-            for (text in messageQueue) {
-                processMessage(text)
-            }
+            chatDao.deleteMessagesForSession(sessionId)
+            conversation?.close()
+            conversation = engine?.createConversation()
         }
     }
+
+    private val messageQueue = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
 
     fun sendMessage(text: String) {
         if (text.isBlank()) {
@@ -189,25 +161,20 @@ class ChatViewModel : ViewModel() {
             return
         }
         
-        val userMsg = ChatMessage(text = text, isUser = true)
-        _uiState.update { state -> 
-            state.copy(messages = state.messages + userMsg)
+        val sessionId = _uiState.value.currentSessionId
+        
+        viewModelScope.launch {
+            chatDao.insertMessage(ChatMessageEntity(sessionId = sessionId, role = "user", content = text))
         }
-        saveConversation()
         
         messageQueue.trySend(text)
     }
 
     private suspend fun processMessage(text: String) {
         val currentConversation = conversation ?: return
+        val sessionId = _uiState.value.currentSessionId
         
-        val initialModelMsg = ChatMessage(text = "", isUser = false)
-        _uiState.update { state -> 
-            state.copy(
-                messages = state.messages + initialModelMsg,
-                isGenerating = true
-            ) 
-        }
+        _uiState.update { state -> state.copy(isGenerating = true) }
         
         val currentProject = _uiState.value.activeProject
         val promptText = if (currentProject != null) {
@@ -223,56 +190,37 @@ class ChatViewModel : ViewModel() {
             
             flow.catch { e ->
                  _uiState.update { state ->
-                     val msgs = state.messages.toMutableList()
-                     if (msgs.isNotEmpty()) {
-                         val last = msgs.removeLast()
-                         msgs.add(last.copy(text = last.text + "\n\n⚠️ Error during generation: ${e.localizedMessage ?: "Unknown error"}"))
-                     }
                      state.copy(
-                         messages = msgs, 
                          isGenerating = false,
                          errorEvent = "Model generation failed: ${e.localizedMessage}"
                      )
                  }
-                 saveConversation()
+                 chatDao.insertMessage(ChatMessageEntity(sessionId = sessionId, role = "system", content = "Error: ${e.localizedMessage}"))
             }.collect { messageUpdate ->
                 fullResponse += messageUpdate.toString()
-                _uiState.update { state ->
-                    val msgs = state.messages.toMutableList()
-                    if (msgs.isNotEmpty()) {
-                        val last = msgs.removeLast()
-                        msgs.add(last.copy(text = fullResponse))
-                    }
-                    state.copy(messages = msgs)
-                }
+                // Update a temporary state in UI if needed, but for now we'll just wait for the end.
             }
             
             _uiState.update { it.copy(isGenerating = false) }
-            saveConversation()
+            chatDao.insertMessage(ChatMessageEntity(sessionId = sessionId, role = "model", content = fullResponse))
             
             // Process tool calls if in project mode
             if (currentProject != null) {
-                processToolCalls(fullResponse, currentProject)
+                processToolCalls(fullResponse, currentProject, sessionId)
             }
             
         } catch (e: Exception) {
             _uiState.update { state ->
-                 val msgs = state.messages.toMutableList()
-                 if (msgs.isNotEmpty()) {
-                     val last = msgs.removeLast()
-                     msgs.add(last.copy(text = last.text + "\n\n⚠️ Execution error: ${e.localizedMessage ?: "Unknown error"}"))
-                 }
                  state.copy(
-                     messages = msgs, 
                      isGenerating = false,
                      errorEvent = "An unexpected error occurred: ${e.localizedMessage}"
                  )
              }
-             saveConversation()
+             chatDao.insertMessage(ChatMessageEntity(sessionId = sessionId, role = "system", content = "Execution error: ${e.localizedMessage}"))
         }
     }
 
-    private suspend fun processToolCalls(response: String, projectDir: java.io.File) {
+    private suspend fun processToolCalls(response: String, projectDir: java.io.File, sessionId: String) {
         var action = ""
         var arg = ""
         var content = ""
@@ -325,7 +273,6 @@ class ChatViewModel : ViewModel() {
                                 val inputStream = connection.inputStream
                                 val responseText = inputStream.bufferedReader().use { it.readText() }
                                 
-                                // Very basic JSON extraction to avoid importing extra libraries just for this
                                 val snippetRegex = Regex("\"snippet\":\"(.*?)\"")
                                 val snippets = snippetRegex.findAll(responseText).map { it.groupValues[1] }.take(3).toList()
                                 
@@ -345,7 +292,6 @@ class ChatViewModel : ViewModel() {
                 toolResult = "Error executing $action: ${e.message}"
             }
             
-            // Auto-reply with tool result
             sendMessage("[System: Tool Execution Result]\n$toolResult")
         }
     }

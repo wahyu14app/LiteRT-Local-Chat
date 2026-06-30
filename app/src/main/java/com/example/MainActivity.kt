@@ -18,6 +18,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.example.settings.SettingsRepository
+import com.example.settings.dataStore
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.ui.text.withStyle
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -282,7 +291,8 @@ fun MainScreen(viewModel: ChatViewModel) {
                 ChatInterface(
                   messages = uiState.messages,
                   isGenerating = uiState.isGenerating,
-                  onSendMessage = viewModel::sendMessage
+                  onSendMessage = viewModel::sendMessage,
+                  onClearChat = viewModel::clearConversation
                 )
               }
           }
@@ -415,10 +425,21 @@ fun MenuCard(
 
 @Composable
 fun SettingsScreen() {
+    val context = LocalContext.current
+    val settingsRepo = remember { SettingsRepository(context.dataStore) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    val temperature by settingsRepo.temperature.collectAsState(initial = 0.8f)
+    val topK by settingsRepo.topK.collectAsState(initial = 40)
+    val maxTokens by settingsRepo.maxTokens.collectAsState(initial = 1024)
+    val topP by settingsRepo.topP.collectAsState(initial = 0.9f)
+    val thinkingEnabled by settingsRepo.thinkingEnabled.collectAsState(initial = false)
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         Text("AI Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.size(16.dp))
@@ -428,8 +449,14 @@ fun SettingsScreen() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Temperature (Coming soon)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.size(8.dp))
+                Text("Temperature: ${String.format("%.2f", temperature)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Slider(
+                    value = temperature,
+                    onValueChange = { newValue -> 
+                        coroutineScope.launch { settingsRepo.setTemperature(newValue) }
+                    },
+                    valueRange = 0f..2f
+                )
                 Text("Control the randomness of the model's output.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -439,8 +466,14 @@ fun SettingsScreen() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Max Tokens (Coming soon)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.size(8.dp))
+                Text("Max Tokens: ${maxTokens}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Slider(
+                    value = maxTokens.toFloat(),
+                    onValueChange = { newValue -> 
+                        coroutineScope.launch { settingsRepo.setMaxTokens(newValue.toInt()) }
+                    },
+                    valueRange = 10f..4096f
+                )
                 Text("Limit the maximum length of generated responses.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -622,7 +655,8 @@ fun ModelSetupScreen(
 fun ChatInterface(
   messages: List<ChatMessage>,
   isGenerating: Boolean,
-  onSendMessage: (String) -> Unit
+  onSendMessage: (String) -> Unit,
+  onClearChat: () -> Unit
 ) {
   var inputText by remember { mutableStateOf("") }
   val listState = rememberLazyListState()
@@ -642,7 +676,20 @@ fun ChatInterface(
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       item { Spacer(modifier = Modifier.size(8.dp)) }
-      item { ModelStatsCard() }
+      item { 
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+          ) {
+              Text("Conversation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+              TextButton(onClick = onClearChat) {
+                  Icon(Icons.Default.Delete, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text("Clear Chat")
+              }
+          }
+      }
       items(messages, key = { it.id }) { message ->
         MessageBubble(message = message)
       }
@@ -811,6 +858,9 @@ fun MessageBubble(message: ChatMessage) {
 
 @Composable
 fun parseMarkdownToAnnotatedString(text: String): androidx.compose.ui.text.AnnotatedString {
+    val codeBg = MaterialTheme.colorScheme.surfaceVariant
+    val codeColor = MaterialTheme.colorScheme.onSurfaceVariant
+    
     return androidx.compose.ui.text.buildAnnotatedString {
         var currentIndex = 0
         // Simple regex to match **bold**, *italic*, `code`, and ```code block```
@@ -831,8 +881,8 @@ fun parseMarkdownToAnnotatedString(text: String): androidx.compose.ui.text.Annot
                     // Code block
                     withStyle(androidx.compose.ui.text.SpanStyle(
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        background = MaterialTheme.colorScheme.surfaceVariant,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        background = codeBg,
+                        color = codeColor
                     )) {
                         append(match.groups[1]?.value ?: "")
                     }
@@ -857,8 +907,8 @@ fun parseMarkdownToAnnotatedString(text: String): androidx.compose.ui.text.Annot
                     // Inline code
                     withStyle(androidx.compose.ui.text.SpanStyle(
                         fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        background = MaterialTheme.colorScheme.surfaceVariant,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        background = codeBg,
+                        color = codeColor
                     )) {
                         append(match.groups[4]?.value ?: "")
                     }
