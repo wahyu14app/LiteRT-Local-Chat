@@ -10,11 +10,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import java.io.File
 import com.example.core.AiEngineApp
-import com.example.database.entity.ChatMessageEntity
-import com.example.database.entity.ChatSessionEntity
 import com.example.queue.PromptQueueManager
 import com.example.queue.PromptRequest
 import kotlinx.coroutines.flow.first
+import org.json.JSONArray
+import org.json.JSONObject
 
 object AiEngineManager {
     var engine: Engine? = null
@@ -43,18 +43,14 @@ object AiEngineManager {
     }
     
     private suspend fun processRequest(request: PromptRequest) {
-        val chatDao = app.database.chatDao()
         val settingsRepo = app.settingsRepository
         
-        // Ensure session exists
-        chatDao.insertSession(ChatSessionEntity(sessionId = request.sessionId, title = "Chat ${request.sessionId.take(4)}"))
-        
         // Save User Message
-        chatDao.insertMessage(ChatMessageEntity(sessionId = request.sessionId, role = "user", content = request.prompt))
+        saveMessageToJson(request.sessionId, request.prompt, true)
         
         if (engine == null) {
             val errorMsg = "Error: AI Model is not loaded. Please open Local AI Engine and load a model first."
-            chatDao.insertMessage(ChatMessageEntity(sessionId = request.sessionId, role = "system", content = errorMsg))
+            saveMessageToJson(request.sessionId, errorMsg, false)
             request.callback?.invoke(errorMsg)
             return
         }
@@ -69,21 +65,40 @@ object AiEngineManager {
             
             flow.catch { e ->
                 val errorMsg = "Error during generation: ${e.localizedMessage}"
-                chatDao.insertMessage(ChatMessageEntity(sessionId = request.sessionId, role = "system", content = errorMsg))
+                saveMessageToJson(request.sessionId, errorMsg, false)
                 request.callback?.invoke(errorMsg)
             }.collect { messageUpdate ->
                 fullResponse += messageUpdate.toString()
             }
             
-            chatDao.insertMessage(ChatMessageEntity(sessionId = request.sessionId, role = "model", content = fullResponse))
+            saveMessageToJson(request.sessionId, fullResponse, false)
             
             request.callback?.invoke(fullResponse)
             
         } catch (e: Exception) {
             val errorMsg = "Execution error: ${e.localizedMessage}"
-            chatDao.insertMessage(ChatMessageEntity(sessionId = request.sessionId, role = "system", content = errorMsg))
+            saveMessageToJson(request.sessionId, errorMsg, false)
             request.callback?.invoke(errorMsg)
         }
+    }
+    
+    private fun saveMessageToJson(sessionId: String, text: String, isUser: Boolean) {
+        val targetDir = AppConfig.CONVERSATIONS_DIR
+        if (!targetDir.exists()) targetDir.mkdirs()
+        
+        val fileName = if (sessionId == "default") "chat_history.json" else "chat_history_${sessionId}.json"
+        val targetFile = File(targetDir, fileName)
+        
+        val jsonArray = if (targetFile.exists()) {
+            try { JSONArray(targetFile.readText()) } catch (e: Exception) { JSONArray() }
+        } else JSONArray()
+        
+        val jsonObj = JSONObject()
+        jsonObj.put("text", text)
+        jsonObj.put("isUser", isUser)
+        jsonArray.put(jsonObj)
+        
+        targetFile.writeText(jsonArray.toString(2))
     }
     
     private fun sendReply(context: Context, replyAction: String?, sessionId: String, response: String) {
