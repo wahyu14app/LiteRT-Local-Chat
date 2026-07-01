@@ -59,19 +59,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun loadConversation() {
+    fun loadConversation() {
         val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
         val targetFile = java.io.File(targetDir, "chat_history.json")
+        val messages = mutableListOf<ChatMessage>()
+        
         if (targetFile.exists()) {
             try {
                 val content = targetFile.readText()
-                val parsed = parseJsonMessages(content)
-                if (parsed.isNotEmpty()) {
-                    _uiState.update { it.copy(messages = parsed) }
-                }
+                messages.addAll(parseJsonMessages(content))
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+        
+        if (messages.isNotEmpty()) {
+            _uiState.update { it.copy(messages = messages) }
         }
     }
 
@@ -80,13 +83,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val targetFile = java.io.File(targetDir, "chat_history.json")
         try {
             if (!targetDir.exists()) targetDir.mkdirs()
-            val jsonArray = _uiState.value.messages.joinToString(
-                prefix = "[\n", separator = ",\n", postfix = "\n]"
-            ) { msg ->
-                val escapedText = msg.text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
-                "  {\"text\":\"${escapedText}\",\"isUser\":${msg.isUser}}"
+            val jsonArray = org.json.JSONArray()
+            _uiState.value.messages.forEach { msg ->
+                val jsonObj = org.json.JSONObject()
+                jsonObj.put("text", msg.text)
+                jsonObj.put("isUser", msg.isUser)
+                jsonArray.put(jsonObj)
             }
-            targetFile.writeText(jsonArray)
+            targetFile.writeText(jsonArray.toString(2))
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -94,11 +98,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun parseJsonMessages(json: String): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
-        val regex = Regex("\\{\"text\":\"(.*?)\",\"isUser\":(true|false)\\}")
-        regex.findAll(json).forEach { match ->
-            val text = match.groupValues[1].replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
-            val isUser = match.groupValues[2].toBoolean()
-            messages.add(ChatMessage(text = text, isUser = isUser))
+        try {
+            val jsonArray = org.json.JSONArray(json)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val text = obj.optString("text", "")
+                val isUser = obj.optBoolean("isUser", true)
+                messages.add(ChatMessage(text = text, isUser = isUser))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
         return messages
     }
@@ -179,12 +188,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearConversation() {
-        val sessionId = _uiState.value.currentSessionId
         viewModelScope.launch {
             _uiState.update { it.copy(messages = emptyList()) }
             saveConversation()
-            conversation?.close()
-            conversation = engine?.createConversation()
+            try {
+                conversation?.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                conversation = engine?.createConversation()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

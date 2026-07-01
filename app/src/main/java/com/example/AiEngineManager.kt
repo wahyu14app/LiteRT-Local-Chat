@@ -86,8 +86,7 @@ object AiEngineManager {
         val targetDir = AppConfig.CONVERSATIONS_DIR
         if (!targetDir.exists()) targetDir.mkdirs()
         
-        val fileName = if (sessionId == "default") "chat_history.json" else "chat_history_${sessionId}.json"
-        val targetFile = File(targetDir, fileName)
+        val targetFile = File(targetDir, "chat_history.json")
         
         val jsonArray = if (targetFile.exists()) {
             try { JSONArray(targetFile.readText()) } catch (e: Exception) { JSONArray() }
