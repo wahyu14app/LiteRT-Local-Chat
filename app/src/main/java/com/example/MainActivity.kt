@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
+    // enableEdgeToEdge()
     
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         if (!Environment.isExternalStorageManager()) {
