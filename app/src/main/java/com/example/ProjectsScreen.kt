@@ -25,12 +25,12 @@ fun ProjectsScreen(viewModel: ChatViewModel, onProjectSelected: (File) -> Unit) 
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("Create New Project") },
+            title = { Text("Buat Grup Chat Baru") },
             text = {
                 OutlinedTextField(
                     value = newProjectName,
                     onValueChange = { newProjectName = it },
-                    label = { Text("Project Name") }
+                    label = { Text("Nama Grup Chat") }
                 )
             },
             confirmButton = {
@@ -82,10 +82,10 @@ Whenever you find new information, write it to a file in a structured format lik
     
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Projects Mode") },
+            title = { Text("Daftar Chat") },
             actions = {
                 IconButton(onClick = { showCreateDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "New Project")
+                    Icon(Icons.Default.Add, contentDescription = "Buat Grup Chat")
                 }
             }
         )
@@ -95,6 +95,28 @@ Whenever you find new information, write it to a file in a structured format lik
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        viewModel.setActiveProject(null)
+                        onProjectSelected(AppConfig.CONVERSATIONS_DIR)
+                    },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("Aplikasi Lain / Global", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("Percakapan dari integrasi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            }
+            
             items(projects) { projectDir ->
                 val nameFile = File(projectDir, "name.txt")
                 val projectName = if (nameFile.exists()) nameFile.readText() else projectDir.name

@@ -59,8 +59,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setSession(sessionId: String) {
+        _uiState.update { it.copy(currentSessionId = sessionId, messages = emptyList()) }
+        loadConversation()
+    }
+
     fun loadConversation() {
-        val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
+        val baseDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
+        val targetDir = if (_uiState.value.activeProject != null) java.io.File(java.io.File(baseDir, "sessions"), _uiState.value.currentSessionId) else baseDir
         val targetFile = java.io.File(targetDir, "chat_history.json")
         val messages = mutableListOf<ChatMessage>()
         
@@ -73,13 +79,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         
-        if (messages.isNotEmpty()) {
-            _uiState.update { it.copy(messages = messages) }
-        }
+        _uiState.update { it.copy(messages = messages) }
     }
 
     private fun saveConversation() {
-        val targetDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
+        val baseDir = _uiState.value.activeProject ?: AppConfig.CONVERSATIONS_DIR
+        val targetDir = if (_uiState.value.activeProject != null) java.io.File(java.io.File(baseDir, "sessions"), _uiState.value.currentSessionId) else baseDir
         val targetFile = java.io.File(targetDir, "chat_history.json")
         try {
             if (!targetDir.exists()) targetDir.mkdirs()

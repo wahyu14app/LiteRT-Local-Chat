@@ -249,18 +249,18 @@ fun MainScreen(viewModel: ChatViewModel) {
               Text("Home", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "HOME") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
            }
            Column(
-             modifier = Modifier.clickable { currentScreen = "CHAT" },
+             modifier = Modifier.clickable { currentScreen = "CHAT_LIST" },
              horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
            ) {
               Box(
                 modifier = Modifier
-                  .background(if(currentScreen == "CHAT") MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
+                  .background(if(currentScreen in listOf("CHAT", "CHAT_LIST", "SESSION_LIST")) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(50))
                   .padding(horizontal = 20.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
               ) {
-                 Icon(imageVector = Icons.Default.Chat, contentDescription = "Chat", tint = if(currentScreen == "CHAT") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                 Icon(imageVector = Icons.Default.Chat, contentDescription = "Chat", tint = if(currentScreen in listOf("CHAT", "CHAT_LIST", "SESSION_LIST")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
               }
-              Text("Chat", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen == "CHAT") MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
+              Text("Chat", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = if(currentScreen in listOf("CHAT", "CHAT_LIST", "SESSION_LIST")) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant)
            }
            Column(
              modifier = Modifier.clickable { currentScreen = "MODELS" },
@@ -289,7 +289,7 @@ fun MainScreen(viewModel: ChatViewModel) {
       when (currentScreen) {
           "HOME" -> {
               HomeScreen(
-                  onNavigateToChat = { currentScreen = "CHAT" },
+                  onNavigateToChat = { currentScreen = "CHAT_LIST" },
                   onNavigateToModels = { currentScreen = "MODELS" },
                   onNavigateToSettings = { currentScreen = "SETTINGS" },
                   onNavigateToDocs = { currentScreen = "DOCS" }
@@ -314,13 +314,20 @@ fun MainScreen(viewModel: ChatViewModel) {
           "MODELS" -> {
               ModelManagementScreen(
                   viewModel = viewModel,
-                  onNavigateToChat = { currentScreen = "CHAT" }
+                  onNavigateToChat = { currentScreen = "CHAT_LIST" }
               )
           }
-          "PROJECTS" -> {
+          "CHAT_LIST" -> {
               ProjectsScreen(
                   viewModel = viewModel,
-                  onProjectSelected = { currentScreen = "CHAT" }
+                  onProjectSelected = { currentScreen = "SESSION_LIST" }
+              )
+          }
+          "SESSION_LIST" -> {
+              SessionsScreen(
+                  viewModel = viewModel,
+                  onSessionSelected = { currentScreen = "CHAT" },
+                  onBack = { currentScreen = "CHAT_LIST" }
               )
           }
           "SETTINGS" -> {
@@ -697,11 +704,11 @@ fun ChatInterface(
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically
           ) {
-              Text("Conversation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+              Text("Mulai mengobrol dengan AI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
               TextButton(onClick = onClearChat) {
-                  Icon(Icons.Default.Delete, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                  Icon(Icons.Default.Delete, contentDescription = "Bersihkan", modifier = Modifier.size(16.dp))
                   Spacer(modifier = Modifier.width(4.dp))
-                  Text("Clear Chat")
+                  Text("Bersihkan Obrolan")
               }
           }
       }
